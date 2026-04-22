@@ -12,3 +12,6 @@ local.properties
 /build/
 *.keystore
 *.jks
+# The app/debug.keystore is intentionally committed so every CI build signs
+# with the same key, letting APK re-installs work as in-place updates.
+!app/debug.keystore

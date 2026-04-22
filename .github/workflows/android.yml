@@ -11,15 +11,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
-      contents: write
+      contents: read
     env:
       GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          persist-credentials: true
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -42,38 +39,6 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           packages: "platforms;android-34 build-tools;34.0.0 platform-tools"
-
-      - name: Generate stable debug keystore if missing
-        id: keystore
-        run: |
-          set -e
-          if [ -f app/debug.keystore ]; then
-            echo "Existing app/debug.keystore found."
-            echo "generated=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Generating stable debug keystore..."
-            keytool -genkeypair \
-              -alias androiddebugkey \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10950 \
-              -keystore app/debug.keystore \
-              -storepass android \
-              -keypass android \
-              -dname "CN=PodcastDiary Debug,O=PodcastDiary,C=US"
-            echo "generated=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Commit keystore
-        if: steps.keystore.outputs.generated == 'true'
-        run: |
-          set -e
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/debug.keystore
-          git commit -m "CI: add stable debug keystore for in-place updates [skip ci]"
-          # Push to the branch that triggered the workflow.
-          git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - name: Run unit tests
         id: tests
