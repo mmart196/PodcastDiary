@@ -45,10 +45,22 @@ class PlayerController(
                 durationMs = c.duration.coerceAtLeast(0L),
             )
         }
+
+        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+            android.util.Log.e(TAG, "player error", error)
+        }
     }
 
     fun connect(onReady: () -> Unit = {}) {
-        if (controllerFuture != null) return
+        // Already connected and live — nothing to do.
+        if (controller?.isConnected == true) {
+            onReady()
+            return
+        }
+        // Stale future/controller (service died while backgrounded). Clean up.
+        if (controllerFuture != null || controller != null) {
+            release()
+        }
         val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
         val fut = try {
             MediaController.Builder(context, token).buildAsync()
@@ -73,6 +85,10 @@ class PlayerController(
         )
     }
 
+    private fun ensureConnected() {
+        if (controller?.isConnected != true) connect()
+    }
+
     fun release() {
         try {
             controller?.removeListener(listener)
@@ -88,11 +104,17 @@ class PlayerController(
         const val TAG = "PlayerController"
     }
 
-    fun positionMs(): Long = controller?.currentPosition ?: 0L
-    fun durationMs(): Long = controller?.duration?.coerceAtLeast(0L) ?: 0L
+    fun positionMs(): Long =
+        controller?.takeIf { it.isConnected }?.currentPosition ?: 0L
+
+    fun durationMs(): Long =
+        controller?.takeIf { it.isConnected }?.duration?.coerceAtLeast(0L) ?: 0L
+
+    fun isConnected(): Boolean = controller?.isConnected == true
 
     fun play(episode: EpisodeEntity) {
-        val c = controller ?: return
+        ensureConnected()
+        val c = controller?.takeIf { it.isConnected } ?: return
         val path = episode.localPath ?: return
         val mediaItem = MediaItem.Builder()
             .setMediaId(episode.guid)
@@ -110,25 +132,26 @@ class PlayerController(
     }
 
     fun pause() {
-        controller?.pause()
+        controller?.takeIf { it.isConnected }?.pause()
     }
 
     fun resume() {
-        controller?.play()
+        ensureConnected()
+        controller?.takeIf { it.isConnected }?.play()
     }
 
     fun seekBy(deltaMs: Long) {
-        val c = controller ?: return
+        val c = controller?.takeIf { it.isConnected } ?: return
         val newPos = (c.currentPosition + deltaMs).coerceAtLeast(0L)
         c.seekTo(newPos)
     }
 
     fun seekTo(positionMs: Long) {
-        controller?.seekTo(positionMs)
+        controller?.takeIf { it.isConnected }?.seekTo(positionMs)
     }
 
     fun setSpeed(speed: Float) {
-        val c = controller ?: return
+        val c = controller?.takeIf { it.isConnected } ?: return
         c.playbackParameters = PlaybackParameters(speed.coerceIn(0.5f, 3.0f))
     }
 }

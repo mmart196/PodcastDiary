@@ -71,6 +71,9 @@ class PlayerViewModel(
         tickJob?.cancel()
         tickJob = viewModelScope.launch {
             while (true) {
+                // Reattach to the service if the controller got disconnected
+                // (e.g. the service was killed while the app was backgrounded).
+                if (!playerController.isConnected()) playerController.connect()
                 _state.value = _state.value.copy(
                     positionMs = playerController.positionMs(),
                     durationMs = playerController.durationMs()
@@ -79,6 +82,10 @@ class PlayerViewModel(
                 delay(500)
             }
         }
+    }
+
+    fun ensureConnected() {
+        if (!playerController.isConnected()) playerController.connect()
     }
 
     fun playOrDownloadPrompt() {
