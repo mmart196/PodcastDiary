@@ -123,6 +123,16 @@ fun SettingsScreen(
                 onClick = { scope.launch { vm.forceResync() } },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Force re-sync feed now") }
+            OutlinedButton(
+                onClick = { scope.launch { vm.fetchFullArchive() } },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Fetch full archive (~650 episodes)") }
+            Text(
+                "Walks every page of the RSS feed. Takes a minute or two the " +
+                    "first time, then just do it once.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            )
 
             Spacer(Modifier.height(16.dp))
             Text("Diagnostics", style = MaterialTheme.typography.titleMedium)

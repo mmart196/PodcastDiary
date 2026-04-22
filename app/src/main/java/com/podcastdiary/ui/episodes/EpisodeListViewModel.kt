@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -56,7 +57,29 @@ class EpisodeListViewModel(
     )
 
     init {
-        syncNow()
+        viewModelScope.launch { initialSync() }
+    }
+
+    /**
+     * First launch (or upgrade from an old version that only had ~10 episodes)
+     * pulls the full archive so the user sees every Divine Intervention episode.
+     * Subsequent launches just pull the latest page for freshness.
+     */
+    private suspend fun initialSync() {
+        if (syncing.value) return
+        syncing.value = true
+        errorMessage.value = null
+        runCatching {
+            val existing = repo.observeAll().first()
+            if (existing.size < FULL_ARCHIVE_THRESHOLD) {
+                repo.syncAllHistory()
+            } else {
+                repo.syncFeed()
+            }
+        }
+            .onSuccess { newEpisodeCount.value = it.newSincePreviousSync }
+            .onFailure { errorMessage.value = it.message ?: "Sync failed" }
+        syncing.value = false
     }
 
     fun syncNow() {
@@ -69,6 +92,10 @@ class EpisodeListViewModel(
                 .onFailure { errorMessage.value = it.message ?: "Sync failed" }
             syncing.value = false
         }
+    }
+
+    private companion object {
+        const val FULL_ARCHIVE_THRESHOLD = 50
     }
 
     fun selectCategory(category: String?) {

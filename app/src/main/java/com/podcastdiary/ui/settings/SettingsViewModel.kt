@@ -43,4 +43,20 @@ class SettingsViewModel(
             .onSuccess { _toasts.send("Synced: ${it.totalParsed} total, ${it.newSincePreviousSync} new") }
             .onFailure { _toasts.send("Sync failed: ${it.message}") }
     }
+
+    /**
+     * Pulls every page of the WordPress RSS feed so the full ~650-episode
+     * archive lands in the DB. Safe to run repeatedly — re-sync preserves
+     * per-user columns (downloads, listen history, play counts).
+     */
+    suspend fun fetchFullArchive() {
+        _toasts.send("Fetching full archive…")
+        runCatching {
+            repo.syncAllHistory { page, count ->
+                if (page % 5 == 0) _toasts.send("Fetched page $page, $count episodes so far")
+            }
+        }
+            .onSuccess { _toasts.send("Full archive: ${it.totalParsed} episodes") }
+            .onFailure { _toasts.send("Full sync failed: ${it.message}") }
+    }
 }

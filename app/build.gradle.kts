@@ -18,11 +18,29 @@ android {
         vectorDrawables.useSupportLibrary = true
     }
 
+    // Use a stable, committed debug keystore so every APK built on CI
+    // signs with the same key. That lets re-installs work as in-place
+    // updates (preserving downloaded audio + listen history) instead of
+    // Android forcing an uninstall due to a signing-key mismatch.
+    signingConfigs {
+        val stableDebug = create("stableDebug") {
+            val ks = rootProject.file("app/debug.keystore")
+            if (ks.exists()) {
+                storeFile = ks
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
-            applicationIdSuffix = ".debug"
-            versionNameSuffix = "-debug"
+            val ks = rootProject.file("app/debug.keystore")
+            if (ks.exists()) {
+                signingConfig = signingConfigs.getByName("stableDebug")
+            }
         }
         release {
             isMinifyEnabled = true
@@ -30,8 +48,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // Debug signing so release APK still installs without a keystore.
-            signingConfig = signingConfigs.getByName("debug")
+            val ks = rootProject.file("app/debug.keystore")
+            signingConfig = if (ks.exists())
+                signingConfigs.getByName("stableDebug")
+            else
+                signingConfigs.getByName("debug")
         }
     }
 

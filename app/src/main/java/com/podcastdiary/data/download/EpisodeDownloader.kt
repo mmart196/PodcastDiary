@@ -150,7 +150,7 @@ class EpisodeDownloader(
     }
 
     private fun safeFileName(guid: String): String =
-        guid.replace(Regex("[^A-Za-z0-9_-]"), "_").take(80)
+        com.podcastdiary.data.EpisodeRepository.safeFileName(guid)
 
     fun deleteAll() {
         val dir = File(context.getExternalFilesDir(null), "episodes")

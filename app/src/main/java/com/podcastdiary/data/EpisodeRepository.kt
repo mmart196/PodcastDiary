@@ -29,8 +29,8 @@ class EpisodeRepository(
         listenEventDao.observeForEpisode(guid)
 
     /**
-     * Fetches the feed, upserts episodes (preserving per-user columns), and
-     * returns the number of episodes newer than the previous sync high-water.
+     * Fetches the latest-page feed (usually 10 items), upserts, and returns
+     * how many of them are newer than the previous sync high-water.
      */
     suspend fun syncFeed(): SyncResult {
         val prevSync = settings.lastFeedSyncMs.first()
@@ -42,6 +42,46 @@ class EpisodeRepository(
         val newCount = entities.count { it.pubDate > prevSync }
         settings.setLastFeedSync(clock(), newest?.guid)
         return SyncResult(totalParsed = entities.size, newSincePreviousSync = newCount)
+    }
+
+    /**
+     * Walks /feed/?paged=N until the page contains no new GUIDs or returns
+     * empty, pulling the full archive into the DB. Stops when [maxPages] is
+     * reached as a safety net. Emits progress to [onProgress] after each page.
+     *
+     * Stable-guid contract: re-running this is safe. Per-user columns are
+     * preserved by [EpisodeDao.upsertFromFeed].
+     */
+    suspend fun syncAllHistory(
+        maxPages: Int = 200,
+        onProgress: suspend (page: Int, totalIngested: Int) -> Unit = { _, _ -> },
+    ): SyncResult {
+        val ingestedGuids = mutableSetOf<String>()
+        val entitiesAll = mutableListOf<EpisodeEntity>()
+        var page = 1
+        while (page <= maxPages) {
+            val url = fetcher.pageUrl(feedUrl, page)
+            val xml = runCatching { fetcher.fetch(url) }.getOrElse { "" }
+            if (xml.isBlank()) break
+            val parsed = parser.parse(xml)
+            if (parsed.isEmpty()) break
+            val entities = parsed.map { it.toEntity() }
+            // If this page is entirely duplicates of something we've already
+            // ingested this run, stop (WordPress sometimes loops back).
+            val newOnThisPage = entities.count { it.guid !in ingestedGuids }
+            if (newOnThisPage == 0) break
+            episodeDao.upsertFromFeed(entities)
+            entities.forEach { ingestedGuids += it.guid }
+            entitiesAll += entities
+            onProgress(page, ingestedGuids.size)
+            page += 1
+        }
+        val newest = entitiesAll.maxByOrNull { it.pubDate }
+        settings.setLastFeedSync(clock(), newest?.guid)
+        return SyncResult(
+            totalParsed = ingestedGuids.size,
+            newSincePreviousSync = ingestedGuids.size,
+        )
     }
 
     suspend fun setLastPosition(guid: String, positionMs: Long) {
@@ -86,6 +126,48 @@ class EpisodeRepository(
         episodeDao.clearAllDownloads()
     }
 
+    /**
+     * Re-sync the DB's idea of "what's downloaded" with what's actually on
+     * disk. Called on app startup so surviving MP3 files are re-linked to
+     * their episode rows even if the DB forgot (e.g. restored from backup),
+     * and rows that claim a file which is gone are reset to NONE.
+     */
+    suspend fun reconcileDownloads(episodesDir: java.io.File) {
+        if (!episodesDir.exists()) return
+        val filesByStem = episodesDir.listFiles { f -> f.isFile && f.extension == "mp3" }
+            ?.associateBy { it.nameWithoutExtension }
+            ?: emptyMap()
+        val episodes = episodeDao.allSnapshot()
+        for (ep in episodes) {
+            val safeStem = safeFileName(ep.guid)
+            val fileOnDisk = filesByStem[safeStem]
+            val localExists = ep.localPath?.let { java.io.File(it).exists() } == true
+            when {
+                ep.localPath != null && !localExists && fileOnDisk != null -> {
+                    // DB has stale path (install re-sandboxed storage), file
+                    // actually lives at the canonical location.
+                    episodeDao.setDownloadResult(
+                        ep.guid,
+                        EpisodeEntity.STATE_DONE,
+                        fileOnDisk.absolutePath,
+                    )
+                }
+                ep.localPath != null && !localExists && fileOnDisk == null -> {
+                    // File truly missing. Reset so UI offers Download again.
+                    episodeDao.setDownloadResult(ep.guid, EpisodeEntity.STATE_NONE, null)
+                }
+                ep.localPath == null && fileOnDisk != null -> {
+                    // Orphan MP3 on disk with a matching guid. Link it.
+                    episodeDao.setDownloadResult(
+                        ep.guid,
+                        EpisodeEntity.STATE_DONE,
+                        fileOnDisk.absolutePath,
+                    )
+                }
+            }
+        }
+    }
+
     data class SyncResult(
         val totalParsed: Int,
         val newSincePreviousSync: Int,
@@ -93,6 +175,11 @@ class EpisodeRepository(
 
     companion object {
         const val DEFAULT_FEED_URL = "https://divineinterventionpodcasts.com/feed/"
+
+        // Mirror of EpisodeDownloader.safeFileName so reconcile can find files
+        // written by the downloader.
+        internal fun safeFileName(guid: String): String =
+            guid.replace(Regex("[^A-Za-z0-9_-]"), "_").take(80)
     }
 }
 

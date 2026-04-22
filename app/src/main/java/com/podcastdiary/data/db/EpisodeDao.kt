@@ -14,6 +14,9 @@ interface EpisodeDao {
     @Query("SELECT * FROM episodes ORDER BY pubDate DESC")
     fun observeAll(): Flow<List<EpisodeEntity>>
 
+    @Query("SELECT * FROM episodes")
+    suspend fun allSnapshot(): List<EpisodeEntity>
+
     @Query("SELECT * FROM episodes WHERE guid = :guid LIMIT 1")
     suspend fun getByGuid(guid: String): EpisodeEntity?
 

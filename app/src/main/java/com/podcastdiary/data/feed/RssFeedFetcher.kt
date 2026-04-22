@@ -21,6 +21,7 @@ class RssFeedFetcher(
             try {
                 client.newCall(request).execute().use { resp ->
                     if (!resp.isSuccessful) {
+                        if (resp.code == 404) return@withContext ""
                         throw IOException("Feed HTTP ${resp.code}")
                     }
                     return@withContext resp.body?.string()
@@ -32,6 +33,16 @@ class RssFeedFetcher(
             }
         }
         throw lastError ?: IOException("Feed fetch failed")
+    }
+
+    /**
+     * Build the WordPress-style pagination URL for the given page.
+     * /feed/ → /feed/?paged=2, /feed/?paged=3, ...
+     */
+    fun pageUrl(baseUrl: String, page: Int): String {
+        if (page <= 1) return baseUrl
+        val separator = if (baseUrl.contains('?')) "&" else "?"
+        return baseUrl + separator + "paged=" + page
     }
 
     companion object {

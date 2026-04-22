@@ -10,6 +10,8 @@ import com.podcastdiary.data.prefs.SettingsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import java.io.File
 
 class AppContainer(context: Context) {
     val appScope: CoroutineScope =
@@ -32,4 +34,15 @@ class AppContainer(context: Context) {
         episodeDao = database.episodeDao(),
         scope = appScope,
     ).also { it.register() }
+
+    val episodesDir: File = File(context.getExternalFilesDir(null), "episodes")
+
+    init {
+        // On every launch: reconcile the DB's "downloaded" state with what's
+        // on disk. Relinks surviving MP3s after an in-place update, and
+        // resets rows pointing at now-missing files.
+        appScope.launch {
+            runCatching { repository.reconcileDownloads(episodesDir) }
+        }
+    }
 }
