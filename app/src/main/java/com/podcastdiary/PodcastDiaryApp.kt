@@ -9,6 +9,7 @@ class PodcastDiaryApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        CrashLog.install(this)
         instance = this
         container = AppContainer(this)
     }

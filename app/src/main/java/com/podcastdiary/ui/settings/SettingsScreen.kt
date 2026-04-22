@@ -1,5 +1,6 @@
 package com.podcastdiary.ui.settings
 
+import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -7,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Visibility
@@ -31,10 +34,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.podcastdiary.CrashLog
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,6 +53,9 @@ fun SettingsScreen(
     var reveal by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    var crashLog by remember { mutableStateOf(CrashLog.read(context)) }
+    var showCrashLog by remember { mutableStateOf(false) }
 
     LaunchedEffect(vm.toastEvents) {
         vm.toastEvents.collect { snackbar.showSnackbar(it) }
@@ -70,6 +78,7 @@ fun SettingsScreen(
             Modifier
                 .padding(pad)
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -114,6 +123,46 @@ fun SettingsScreen(
                 onClick = { scope.launch { vm.forceResync() } },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Force re-sync feed now") }
+
+            Spacer(Modifier.height(16.dp))
+            Text("Diagnostics", style = MaterialTheme.typography.titleMedium)
+            if (crashLog == null) {
+                Text(
+                    "No crash recorded.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                )
+            } else {
+                OutlinedButton(
+                    onClick = { showCrashLog = !showCrashLog },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (showCrashLog) "Hide last crash" else "Show last crash") }
+                OutlinedButton(
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, "PodcastDiary crash log")
+                            putExtra(Intent.EXTRA_TEXT, crashLog)
+                        }
+                        context.startActivity(Intent.createChooser(intent, "Share crash log"))
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Share crash log") }
+                OutlinedButton(
+                    onClick = {
+                        CrashLog.clear(context)
+                        crashLog = null
+                        showCrashLog = false
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text("Clear crash log") }
+                if (showCrashLog) {
+                    Text(
+                        crashLog.orEmpty(),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
         }
     }
 }

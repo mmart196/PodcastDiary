@@ -48,24 +48,44 @@ class PlayerController(
     }
 
     fun connect(onReady: () -> Unit = {}) {
+        if (controllerFuture != null) return
         val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
-        controllerFuture = MediaController.Builder(context, token).buildAsync().also { fut ->
-            fut.addListener(
-                {
+        val fut = try {
+            MediaController.Builder(context, token).buildAsync()
+        } catch (t: Throwable) {
+            android.util.Log.e(TAG, "MediaController.buildAsync failed", t)
+            return
+        }
+        controllerFuture = fut
+        fut.addListener(
+            {
+                try {
                     controller = fut.get()
                     controller?.addListener(listener)
                     onReady()
-                },
-                MoreExecutors.directExecutor()
-            )
-        }
+                } catch (t: Throwable) {
+                    android.util.Log.e(TAG, "MediaController connect failed", t)
+                    controller = null
+                    controllerFuture = null
+                }
+            },
+            MoreExecutors.directExecutor()
+        )
     }
 
     fun release() {
-        controller?.removeListener(listener)
-        controllerFuture?.let { MediaController.releaseFuture(it) }
+        try {
+            controller?.removeListener(listener)
+            controllerFuture?.let { MediaController.releaseFuture(it) }
+        } catch (t: Throwable) {
+            android.util.Log.e(TAG, "release failed", t)
+        }
         controller = null
         controllerFuture = null
+    }
+
+    private companion object {
+        const val TAG = "PlayerController"
     }
 
     fun positionMs(): Long = controller?.currentPosition ?: 0L
