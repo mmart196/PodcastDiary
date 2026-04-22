@@ -1,7 +1,7 @@
 package com.podcastdiary.data.feed
 
-import android.util.Xml
 import org.xmlpull.v1.XmlPullParser
+import org.xmlpull.v1.XmlPullParserFactory
 import java.io.StringReader
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -23,8 +23,9 @@ data class ParsedEpisode(
 class RssFeedParser {
 
     fun parse(xml: String): List<ParsedEpisode> {
-        val parser = Xml.newPullParser()
-        parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
+        val factory = XmlPullParserFactory.newInstance()
+        factory.isNamespaceAware = false
+        val parser = factory.newPullParser()
         parser.setInput(StringReader(xml))
         val items = mutableListOf<ParsedEpisode>()
         var inItem = false

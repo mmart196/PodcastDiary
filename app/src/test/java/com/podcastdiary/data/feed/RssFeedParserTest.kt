@@ -5,10 +5,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
 
-@RunWith(RobolectricTestRunner::class)
 class RssFeedParserTest {
 
     private fun sample(): String =
@@ -25,7 +22,7 @@ class RssFeedParserTest {
             assertNotNull("episode number for ${it.title}", it.episodeNumber)
         }
         val byNumber = items.associateBy { it.episodeNumber }
-        assertEquals(648, byNumber.keys.max())
+        assertEquals(648, byNumber.keys.filterNotNull().max())
     }
 
     @Test
