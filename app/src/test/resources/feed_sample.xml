@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"
+     xmlns:content="http://purl.org/rss/1.0/modules/content/"
+     xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+  <channel>
+    <title>Divine Intervention Podcasts</title>
+    <link>https://divineinterventionpodcasts.com</link>
+    <description>Medical education podcast.</description>
+    <item>
+      <title>Divine Intervention Episode 648: Random Rapid Review Step 2 and 3 (135)</title>
+      <link>https://divineinterventionpodcasts.com/2026/04/15/divine-intervention-episode-648/</link>
+      <pubDate>Wed, 15 Apr 2026 10:00:00 +0000</pubDate>
+      <guid isPermaLink="false">https://divineinterventionpodcasts.com/?p=648</guid>
+      <description>Quick rapid-review questions.</description>
+      <category>USMLE Step 2 CK</category>
+      <enclosure url="https://divineinterventionpodcasts.com/wp-content/uploads/2026/04/dip-ep-648-rr-step-2-and-3-135.mp3"
+                 length="12345678" type="audio/mpeg"/>
+      <itunes:duration>18:42</itunes:duration>
+    </item>
+    <item>
+      <title>Divine Intervention Episode 647: Some Topic</title>
+      <link>https://divineinterventionpodcasts.com/2026/04/08/divine-intervention-episode-647/</link>
+      <pubDate>Wed, 08 Apr 2026 10:00:00 +0000</pubDate>
+      <guid isPermaLink="false">https://divineinterventionpodcasts.com/?p=647</guid>
+      <description><![CDATA[<p>Description with <em>HTML</em>.</p>]]></description>
+      <category>USMLE Step 1</category>
+      <enclosure url="https://divineinterventionpodcasts.com/wp-content/uploads/2026/04/dip-ep-647.mp3"
+                 length="9876543" type="audio/mpeg"/>
+      <itunes:duration>1:02:10</itunes:duration>
+    </item>
+    <item>
+      <title>Divine Intervention Episode 646: Study Tips</title>
+      <link>https://divineinterventionpodcasts.com/2026/04/01/divine-intervention-episode-646/</link>
+      <pubDate>Wed, 01 Apr 2026 10:00:00 +0000</pubDate>
+      <guid isPermaLink="false">https://divineinterventionpodcasts.com/?p=646</guid>
+      <description>Plain description.</description>
+      <enclosure url="https://divineinterventionpodcasts.com/wp-content/uploads/2026/04/dip-ep-646.mp3"
+                 length="5555555" type="audio/mpeg"/>
+    </item>
+  </channel>
+</rss>
