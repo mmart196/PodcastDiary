@@ -11,7 +11,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Observes the player and writes listening state to the repository:
- * - periodic `lastPositionMs` saves while playing (every 10s)
+ * - fast `lastPositionMs` saves while playing (every [SAVE_INTERVAL_MS])
  * - a `ListenEventEntity` row per contiguous listening session
  * - `listenedFlag` flip to true at ≥ 90% of duration (once per episode)
  *
@@ -34,6 +34,7 @@ class ListenTracker(
     private var currentGuid: String? = null
     private var listenedMarkedForCurrent = false
     private var periodicJob: Job? = null
+    private var lastSavedPosMs: Long = -1L
 
     fun attach() {
         player.addListener(this)
@@ -50,6 +51,7 @@ class ListenTracker(
         endSessionIfOpen(endedEarly = true)
         currentGuid = mediaItem?.mediaId
         listenedMarkedForCurrent = false
+        lastSavedPosMs = -1L
     }
 
     override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -66,7 +68,19 @@ class ListenTracker(
             if (dur > 0 && guid != null) {
                 scope.launch(Dispatchers.IO) { repo.setDurationIfMissing(guid, dur) }
             }
+            // Opportunistic save: reaching READY usually follows a seek or a
+            // buffer recovery, both of which are good save points.
+            saveCurrentPositionFromMain()
         }
+    }
+
+    override fun onPositionDiscontinuity(
+        oldPosition: Player.PositionInfo,
+        newPosition: Player.PositionInfo,
+        reason: Int,
+    ) {
+        // Save on every seek so the DB tracks user-initiated jumps.
+        saveCurrentPositionFromMain()
     }
 
     private fun onPlayStart() {
@@ -74,10 +88,13 @@ class ListenTracker(
         currentGuid = guid
         sessionStartTs = clock()
         sessionStartPosMs = player.currentPosition
+        // Record the start position right away so a crash in the first few
+        // seconds still resumes near where we began.
+        saveCurrentPositionFromMain()
         periodicJob?.cancel()
         periodicJob = scope.launch(Dispatchers.Main) {
             while (true) {
-                delay(10_000)
+                delay(SAVE_INTERVAL_MS)
                 val g = currentGuid ?: break
                 // Still on Main: Player access is safe here.
                 val pos = player.currentPosition
@@ -86,13 +103,31 @@ class ListenTracker(
                     dur > 0 &&
                     pos.toFloat() / dur >= 0.90f
                 if (eligible) listenedMarkedForCurrent = true
-                // Hop to IO for the DB writes.
-                scope.launch(Dispatchers.IO) {
-                    repo.setLastPosition(g, pos)
-                    if (eligible) repo.markListened(g)
+                // Skip redundant writes if we haven't moved since last save
+                // (e.g. paused but session still open).
+                if (pos != lastSavedPosMs) {
+                    lastSavedPosMs = pos
+                    scope.launch(Dispatchers.IO) {
+                        repo.setLastPosition(g, pos)
+                        if (eligible) repo.markListened(g)
+                    }
+                } else if (eligible) {
+                    scope.launch(Dispatchers.IO) { repo.markListened(g) }
                 }
             }
         }
+    }
+
+    /**
+     * Must be called on the main thread. Reads the current position directly
+     * from the player and writes it to the DB via IO.
+     */
+    private fun saveCurrentPositionFromMain() {
+        val guid = player.currentMediaItem?.mediaId ?: return
+        val pos = player.currentPosition
+        if (pos == lastSavedPosMs) return
+        lastSavedPosMs = pos
+        scope.launch(Dispatchers.IO) { repo.setLastPosition(guid, pos) }
     }
 
     private fun endSessionIfOpen(endedEarly: Boolean) {
@@ -138,5 +173,11 @@ class ListenTracker(
         if (!eligible) return
         listenedMarkedForCurrent = true
         scope.launch(Dispatchers.IO) { repo.markListened(guid) }
+    }
+
+    private companion object {
+        // Save position every 2 seconds while playing. A crash or SIGKILL
+        // therefore loses at most ~2 seconds of progress instead of 10.
+        const val SAVE_INTERVAL_MS = 2_000L
     }
 }
