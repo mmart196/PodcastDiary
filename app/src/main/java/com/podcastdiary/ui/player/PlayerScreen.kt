@@ -39,8 +39,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.podcastdiary.data.db.entities.ListenEventEntity
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -84,7 +85,9 @@ fun PlayerScreen(
                 Text(
                     buildList {
                         ep.category?.let { add(it) }
-                        if (ep.pubDate > 0) add(DATE_FMT.format(Date(ep.pubDate)))
+                        if (ep.pubDate > 0) add(
+                            DATE_FMT.format(Instant.ofEpochMilli(ep.pubDate).atZone(SYSTEM_ZONE))
+                        )
                         if (ep.playCount > 0) add("played ${ep.playCount}×")
                         if (ep.listenedFlag) add("listened")
                     }.joinToString("  •  "),
@@ -201,7 +204,7 @@ private fun SpeedControl(speed: Float, onChange: (Float) -> Unit) {
 
 @Composable
 private fun ListenRow(evt: ListenEventEntity) {
-    val started = DATE_TIME_FMT.format(Date(evt.startedAt))
+    val started = DATE_TIME_FMT.format(Instant.ofEpochMilli(evt.startedAt).atZone(SYSTEM_ZONE))
     val dur = ((evt.endedAt - evt.startedAt) / 1000).coerceAtLeast(0)
     Text(
         text = "$started  —  ${formatSeconds(dur)} listened",
@@ -225,5 +228,8 @@ private fun formatSeconds(s: Long): String {
     return if (m > 0) "${m}m ${r}s" else "${r}s"
 }
 
-private val DATE_FMT = SimpleDateFormat("MMM d, yyyy", Locale.US)
-private val DATE_TIME_FMT = SimpleDateFormat("MMM d  h:mm a", Locale.US)
+// DateTimeFormatter is immutable + thread-safe, unlike SimpleDateFormat.
+private val DATE_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US)
+private val DATE_TIME_FMT: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("MMM d  h:mm a", Locale.US)
+private val SYSTEM_ZONE: ZoneId = ZoneId.systemDefault()

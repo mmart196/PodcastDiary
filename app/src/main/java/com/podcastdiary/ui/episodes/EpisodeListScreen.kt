@@ -49,8 +49,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.podcastdiary.CrashLog
 import com.podcastdiary.data.db.entities.EpisodeEntity
-import java.text.SimpleDateFormat
-import java.util.Date
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -117,8 +118,8 @@ fun EpisodeListScreen(
                 selected = state.selectedCategory,
                 onSelect = { vm.selectCategory(it) },
             )
-            if (state.episodes.isEmpty() && !state.syncing) {
-                EmptyState()
+            if (state.episodes.isEmpty()) {
+                if (state.syncing) EmptyState() else NoEpisodesState()
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
                     items(state.episodes, key = { it.guid }) { ep ->
@@ -240,6 +241,16 @@ private fun EmptyState() {
 }
 
 @Composable
+private fun NoEpisodesState() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(
+            "No episodes yet. Tap the refresh icon at the top.",
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+        )
+    }
+}
+
+@Composable
 private fun EpisodeRow(
     episode: EpisodeEntity,
     onClick: () -> Unit,
@@ -307,11 +318,13 @@ private fun EpisodeRow(
 
 private fun EpisodeEntity.subtitle(): String {
     val parts = mutableListOf<String>()
-    if (pubDate > 0) parts += DATE_FMT.format(Date(pubDate))
+    if (pubDate > 0) parts += DATE_FMT.format(Instant.ofEpochMilli(pubDate).atZone(SYSTEM_ZONE))
     category?.let { parts += it }
     if (playCount > 0) parts += "played ${playCount}×"
     if (listenedFlag) parts += "listened"
     return parts.joinToString("  •  ")
 }
 
-private val DATE_FMT = SimpleDateFormat("MMM d, yyyy", Locale.US)
+// DateTimeFormatter is immutable + thread-safe, unlike SimpleDateFormat.
+private val DATE_FMT: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US)
+private val SYSTEM_ZONE: ZoneId = ZoneId.systemDefault()

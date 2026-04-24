@@ -1,5 +1,6 @@
 package com.podcastdiary.ui.player
 
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.podcastdiary.data.EpisodeRepository
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
+@Immutable
 data class PlayerUiState(
     val episode: EpisodeEntity? = null,
     val listens: List<ListenEventEntity> = emptyList(),

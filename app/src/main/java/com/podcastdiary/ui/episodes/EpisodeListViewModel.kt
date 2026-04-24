@@ -1,5 +1,6 @@
 package com.podcastdiary.ui.episodes
 
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.podcastdiary.data.EpisodeRepository
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+@Immutable
 data class EpisodeListUiState(
     val episodes: List<EpisodeEntity> = emptyList(),
     val categories: List<String> = emptyList(),

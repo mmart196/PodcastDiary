@@ -8,6 +8,10 @@ import com.podcastdiary.data.feed.ParsedEpisode
 import com.podcastdiary.data.feed.RssFeedFetcher
 import com.podcastdiary.data.feed.RssFeedParser
 import com.podcastdiary.data.prefs.SettingsStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 
@@ -45,40 +49,67 @@ class EpisodeRepository(
     }
 
     /**
-     * Walks /feed/?paged=N until the page contains no new GUIDs or returns
-     * empty, pulling the full archive into the DB. Stops when [maxPages] is
-     * reached as a safety net. Emits progress to [onProgress] after each page.
+     * Walks /feed/?paged=N in parallel chunks of [concurrency] pages at a time
+     * until a chunk yields no new GUIDs or a 404 is hit, pulling the full
+     * archive into the DB. Stops when [maxPages] is reached as a safety net.
+     * Emits progress to [onProgress] after each chunk.
      *
      * Stable-guid contract: re-running this is safe. Per-user columns are
      * preserved by [EpisodeDao.upsertFromFeed].
      */
     suspend fun syncAllHistory(
         maxPages: Int = 200,
+        concurrency: Int = 4,
         onProgress: suspend (page: Int, totalIngested: Int) -> Unit = { _, _ -> },
-    ): SyncResult {
+    ): SyncResult = coroutineScope {
         val ingestedGuids = mutableSetOf<String>()
-        val entitiesAll = mutableListOf<EpisodeEntity>()
-        var page = 1
-        while (page <= maxPages) {
-            val url = fetcher.pageUrl(feedUrl, page)
-            val xml = runCatching { fetcher.fetch(url) }.getOrElse { "" }
-            if (xml.isBlank()) break
-            val parsed = parser.parse(xml)
-            if (parsed.isEmpty()) break
-            val entities = parsed.map { it.toEntity() }
-            // If this page is entirely duplicates of something we've already
-            // ingested this run, stop (WordPress sometimes loops back).
-            val newOnThisPage = entities.count { it.guid !in ingestedGuids }
-            if (newOnThisPage == 0) break
-            episodeDao.upsertFromFeed(entities)
-            entities.forEach { ingestedGuids += it.guid }
-            entitiesAll += entities
-            onProgress(page, ingestedGuids.size)
-            page += 1
+        var newest: EpisodeEntity? = null
+        var pageStart = 1
+        chunks@ while (pageStart <= maxPages) {
+            val pageEnd = minOf(pageStart + concurrency - 1, maxPages)
+            // Fire fetches for pageStart..pageEnd in parallel. Each returns
+            // either a parsed list, null on 404, or throws on transport error.
+            val deferred = (pageStart..pageEnd).map { page ->
+                async(Dispatchers.IO) {
+                    val url = fetcher.pageUrl(feedUrl, page)
+                    val xml = runCatching { fetcher.fetch(url) }.getOrElse { "" }
+                    if (xml.isBlank()) null else parser.parse(xml)
+                }
+            }
+            val pages = deferred.awaitAll()
+
+            val chunkEntities = mutableListOf<EpisodeEntity>()
+            var chunkNewCount = 0
+            var hitEndOfArchive = false
+            for (parsed in pages) {
+                if (parsed == null) {
+                    hitEndOfArchive = true
+                    break
+                }
+                val entities = parsed.map { it.toEntity() }
+                val newOnPage = entities.count { it.guid !in ingestedGuids }
+                chunkNewCount += newOnPage
+                entities.forEach { ingestedGuids += it.guid }
+                chunkEntities += entities
+                val pageNewest = entities.maxByOrNull { it.pubDate }
+                if (pageNewest != null && (newest == null || pageNewest.pubDate > newest!!.pubDate)) {
+                    newest = pageNewest
+                }
+            }
+
+            if (chunkEntities.isNotEmpty()) {
+                episodeDao.upsertFromFeed(chunkEntities)
+            }
+            onProgress(pageEnd, ingestedGuids.size)
+            if (hitEndOfArchive) break@chunks
+            // Entire chunk was duplicates (caller has seen these guids before)
+            // — WordPress returns pages in monotonic order, so older pages are
+            // dupes too.
+            if (chunkNewCount == 0) break@chunks
+            pageStart = pageEnd + 1
         }
-        val newest = entitiesAll.maxByOrNull { it.pubDate }
         settings.setLastFeedSync(clock(), newest?.guid)
-        return SyncResult(
+        SyncResult(
             totalParsed = ingestedGuids.size,
             newSincePreviousSync = ingestedGuids.size,
         )
